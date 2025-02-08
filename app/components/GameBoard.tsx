@@ -2,112 +2,233 @@
 'use client'
 import React, { useState, useEffect, useRef } from "react";
 
+interface TrashObject {
+  id: number;
+  totalClicks: number; // accumulated taps across rounds
+  roundClicks: number; // taps during the current round (reset each round)
+  busted: boolean;
+  top: number; // vertical position (percentage)
+  left: number; // horizontal position (percentage)
+}
+
 const ROUND_DURATION = 15; // seconds per round
-const REQUIRED_CLICKS = 3; // trash bag must be clicked 3 times to clear the round
-const MAX_MISSED = 3; // game over after 3 missed payments
+const END_ROUND_DELAY = 2000; // ms delay before next round starts
+const REQUIRED_CLICKS = 3; // taps needed to clear an object
+const BUSTED_THRESHOLD = 10; // game over if total busted > 10
 
 const GameBoard: React.FC = () => {
+  // Game states
+  const [started, setStarted] = useState<boolean>(false);
   const [round, setRound] = useState<number>(1);
-  const [clickCount, setClickCount] = useState<number>(0);
+  const [objects, setObjects] = useState<TrashObject[]>([]);
   const [timeLeft, setTimeLeft] = useState<number>(ROUND_DURATION);
-  const [missedPayments, setMissedPayments] = useState<number>(0);
+  const [totalBusted, setTotalBusted] = useState<number>(0);
   const [gameOver, setGameOver] = useState<boolean>(false);
+  const [roundEnded, setRoundEnded] = useState<boolean>(false);
+  // For unique IDs for new objects
+  const [nextId, setNextId] = useState<number>(0);
 
-  // Use a ref to store the timer ID so we can clear it as needed.
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Start or restart the timer every new round (unless the game is over)
-  useEffect(() => {
-    if (gameOver) return;
-    // Clear any existing timer
-    if (timerRef.current) clearInterval(timerRef.current);
+  // Helper: generate a random percentage (we use 0–75% so the image stays within the 100% canvas)
+  const getRandomPosition = () => Math.random() * 75;
 
-    // Reset the timer for this round
+  // Start (or restart) a round:
+  // • Reset the round timer.
+  // • For all objects already in play (carryover from previous rounds) that are not busted,
+  //   reset roundClicks and reassign positions.
+  // • Add new objects equal to the current round number.
+  const startRound = () => {
     setTimeLeft(ROUND_DURATION);
+    // For carryover objects that are not busted, reset roundClicks and randomize positions.
+    setObjects((prev) =>
+      prev.map((obj) =>
+        obj.busted
+          ? obj
+          : { ...obj, roundClicks: 0, top: getRandomPosition(), left: getRandomPosition() }
+      )
+    );
+
+    // Create new objects for this round.
+    const newObjects: TrashObject[] = [];
+    for (let i = 0; i < round; i++) {
+      newObjects.push({
+        id: nextId + i,
+        totalClicks: 0,
+        roundClicks: 0,
+        busted: false,
+        top: getRandomPosition(),
+        left: getRandomPosition(),
+      });
+    }
+    setNextId((prev) => prev + round);
+    setObjects((prev) => [...prev, ...newObjects]);
+
+    // Start (or restart) the round timer.
+    if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = setInterval(() => {
       setTimeLeft((prev) => prev - 1);
     }, 1000);
+  };
 
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [round, gameOver]);
+  // End the round: process each object to see if it was tapped this round.
+  // • Any object with roundClicks === 0 (i.e. not tapped at all during the round)
+  //   is marked as busted.
+  // • Busted objects are kept on the canvas.
+  // • A vibrant overlay message is shown before moving on.
+  const endRound = () => {
+    if (timerRef.current) clearInterval(timerRef.current);
 
-  // When time runs out, decide if it's a missed payment
-  useEffect(() => {
-    if (gameOver) return;
-    if (timeLeft <= 0) {
-      // If the trash bag wasn’t clicked at all during the round, count it as a missed payment
-      if (clickCount === 0) {
-        setMissedPayments((prev) => {
-          const newMissed = prev + 1;
-          if (newMissed >= MAX_MISSED) {
-            setGameOver(true);
-          }
-          return newMissed;
-        });
+    // Process objects: mark those that received zero taps this round as busted.
+    let bustedThisRound = 0;
+    setObjects((prev) =>
+      prev.map((obj) => {
+        if (!obj.busted && obj.roundClicks === 0) {
+          bustedThisRound++;
+          return { ...obj, busted: true };
+        }
+        return obj;
+      })
+    );
+
+    // Update the total busted count.
+    setTotalBusted((prev) => prev + bustedThisRound);
+
+    // Remove objects that have been fully cleared (i.e. reached REQUIRED_CLICKS)
+    setObjects((prev) => prev.filter((obj) => obj.totalClicks < REQUIRED_CLICKS));
+
+    setRoundEnded(true);
+    // After a delay, either end the game or start the next round.
+    setTimeout(() => {
+      if (totalBusted + bustedThisRound > BUSTED_THRESHOLD) {
+        setGameOver(true);
+      } else {
+        setRound((prev) => prev + 1);
+        setRoundEnded(false);
+        startRound();
       }
-      // Proceed to the next round regardless of click count (provided it's not game over)
-      setRound((prev) => prev + 1);
-      setClickCount(0);
-    }
-  }, [timeLeft, clickCount, gameOver]);
+    }, END_ROUND_DELAY);
+  };
 
-  // If the trash bag is clicked the required number of times before time is up,
-  // end the round early.
+  // End the round automatically when the timer runs out.
   useEffect(() => {
-    if (clickCount >= REQUIRED_CLICKS) {
-      // Clear the timer since the round is finished
-      if (timerRef.current) clearInterval(timerRef.current);
-      // Move to the next round
-      setRound((prev) => prev + 1);
-      setClickCount(0);
+    if (!gameOver && started && timeLeft <= 0 && !roundEnded) {
+      endRound();
     }
-  }, [clickCount]);
+  }, [timeLeft, gameOver, started, roundEnded]);
 
-  const handleTrashClick = () => {
-    if (gameOver) return;
-    setClickCount((prev) => prev + 1);
+  // Also, if all objects (that are not busted) have been cleared (or there are none in play), end the round early.
+  useEffect(() => {
+    if (!gameOver && started && objects.filter((obj) => !obj.busted).length === 0 && !roundEnded) {
+      endRound();
+    }
+  }, [objects, gameOver, started, roundEnded]);
+
+  // Handle a tap/click on an object.
+  // Increment both its totalClicks and roundClicks.
+  // If totalClicks reaches the required 3 taps, remove it (cleared).
+  // (Ignore taps on busted objects.)
+  const handleClick = (id: number) => {
+    if (gameOver || roundEnded) return;
+    setObjects((prev) =>
+      prev
+        .map((obj) => {
+          if (obj.id === id && !obj.busted) {
+            const newTotal = obj.totalClicks + 1;
+            const newRound = obj.roundClicks + 1;
+            return { ...obj, totalClicks: newTotal, roundClicks: newRound };
+          }
+          return obj;
+        })
+        .filter((obj) => obj.totalClicks < REQUIRED_CLICKS)
+    );
   };
 
-  const restartGame = () => {
+  // Start the game when the user clicks the "Start Game" button.
+  const handleStart = () => {
+    setStarted(true);
     setRound(1);
-    setClickCount(0);
-    setMissedPayments(0);
+    setObjects([]);
+    setTotalBusted(0);
     setGameOver(false);
+    setRoundEnded(false);
+    setNextId(0);
+    startRound();
   };
+
+  // Restart the game (back to initial state).
+  const handleRestart = () => {
+    setStarted(false);
+    setRound(1);
+    setObjects([]);
+    setTotalBusted(0);
+    setGameOver(false);
+    setRoundEnded(false);
+    setNextId(0);
+  };
+
+  // Compute missed payments as the integer division of busted bags by 3.
+  const missedPayments = Math.floor(totalBusted / 3);
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
-      {gameOver ? (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4 relative">
+      {!started ? (
         <div className="text-center">
-          <h1 className="text-4xl font-bold mb-4">Game Over</h1>
+          <h1 className="text-4xl font-bold mb-4">Trash Tap Game</h1>
+          <button
+            onClick={handleStart}
+            className="px-4 py-2 bg-green-500 text-white rounded"
+          >
+            Start Game
+          </button>
+        </div>
+      ) : gameOver ? (
+        <div className="text-center">
+          <h1 className="text-4xl font-bold mb-4 text-red-600">Game Over</h1>
+          <p className="mb-2">Total Busted Bags: {totalBusted}</p>
           <p className="mb-4">Missed Payments: {missedPayments}</p>
           <button
+            onClick={handleRestart}
             className="px-4 py-2 bg-blue-500 text-white rounded"
-            onClick={restartGame}
           >
             Restart Game
           </button>
         </div>
       ) : (
         <>
+          {/* Game Info */}
           <div className="mb-4 text-center">
-            <p>Round: {round}</p>
-            <p>Time Left: {timeLeft} seconds</p>
-            <p>Clicks: {clickCount}</p>
-            <p>Missed Payments: {missedPayments}</p>
+            <p className="text-lg font-semibold">Round: {round}</p>
+            <p className="text-lg font-semibold">Time Left: {timeLeft} sec</p>
+            <p className="text-lg font-semibold">Busted Bags: {totalBusted}</p>
+            <p className="text-lg font-semibold">
+              Missed Payments: {missedPayments}
+            </p>
           </div>
-          {/* Square canvas */}
-          <div className="w-96 h-96 bg-white border border-gray-300 flex items-center justify-center relative">
-            {/* Trash bag image (located at public/images/trash.png) */}
-            <div onClick={handleTrashClick} className="cursor-pointer">
-              <img
-                src="/images/trash.png"
-                alt="Trash Bag"
-                className="w-24 h-24"
-              />
-            </div>
+          {/* Canvas */}
+          <div className="w-96 h-96 bg-white border border-gray-300 relative">
+            {objects.map((obj) => (
+              <div
+                key={obj.id}
+                onClick={() => handleClick(obj.id)}
+                className={`cursor-pointer absolute ${obj.busted ? "pointer-events-none" : ""}`}
+                style={{ top: `${obj.top}%`, left: `${obj.left}%` }}
+              >
+                <img
+                  src={obj.busted ? "/images/busted.png" : "/images/trashBag.png"}
+                  alt={obj.busted ? "Busted Trash Bag" : "Trash Bag"}
+                  className="w-20 h-20"
+                />
+              </div>
+            ))}
+            {/* Vibrant overlay when the round ends */}
+            {roundEnded && (
+              <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+                <h2 className="text-4xl font-bold text-yellow-400 animate-pulse">
+                  Starting Next Round!
+                </h2>
+              </div>
+            )}
           </div>
         </>
       )}

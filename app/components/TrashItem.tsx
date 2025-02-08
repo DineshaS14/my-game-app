@@ -11,7 +11,7 @@ const TrashItem: React.FC<TrashItemProps> = ({ type, onClick }) => {
   const label = type === "trash" ? "Bag of Trash" : "Busted Trash Bag";
   // Adjust file names based on your image format.
   // For this example, we're using PNG images.
-  const iconFile = type === "trash" ? "trash.png" : "busted.png";
+  const iconFile = type === "trash" ? "trashBag.png" : "busted.png";
 
   return (
     <div
