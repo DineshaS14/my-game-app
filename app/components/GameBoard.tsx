@@ -1,4 +1,3 @@
-// components/GameBoard.tsx
 'use client'
 import React, { useState, useEffect, useRef } from "react";
 
@@ -11,7 +10,7 @@ interface TrashObject {
   left: number; // horizontal position (percentage)
 }
 
-const ROUND_DURATION = 15; // seconds per round
+const ROUND_DURATION = 12; // seconds per round
 const END_ROUND_DELAY = 2000; // ms delay before next round starts
 const REQUIRED_CLICKS = 3; // taps needed to clear an object
 const BUSTED_THRESHOLD = 10; // game over if total busted > 10
@@ -119,7 +118,12 @@ const GameBoard: React.FC = () => {
 
   // Also, if all objects (that are not busted) have been cleared (or there are none in play), end the round early.
   useEffect(() => {
-    if (!gameOver && started && objects.filter((obj) => !obj.busted).length === 0 && !roundEnded) {
+    if (
+      !gameOver &&
+      started &&
+      objects.filter((obj) => !obj.busted).length === 0 &&
+      !roundEnded
+    ) {
       endRound();
     }
   }, [objects, gameOver, started, roundEnded]);
@@ -174,17 +178,47 @@ const GameBoard: React.FC = () => {
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4 relative">
       {!started ? (
         <div className="text-center">
-          <h1 className="text-4xl font-bold mb-4">Trash Tap Game</h1>
+          <h1 className="text-6xl font-extrabold italic mb-4">Tap To Prosper</h1>
+          <p>
+            This game turns financial analysis into an interactive challenge.<br />
+            Trash bags represent mortgage or payment obligations.<br />
+            Each bag must be &quot;paid&quot; &#40;tapped&#41; three times to be cleared.<br />
+            If a bag is not tapped at all during a round, it turns into a busted bag—symbolizing a missed payment.<br />
+            As missed payments accumulate, they can eventually lead to game over, mirroring how missed mortgage payments can create serious financial problems.<br />
+          </p>
+          <div className="bg-white p-6 rounded-lg shadow-lg my-4">
+            <h2 className="text-2xl font-bold text-purple-800 mb-4">Game Rules</h2>
+            <ul className="list-disc ml-6 space-y-2 text-lg text-purple-700 font-bold">
+              <li>
+                Each round starts with both new and carried-over trash bags representing financial obligations.
+              </li>
+              <li>
+                Every trash bag requires three taps (payments) to clear it from the canvas.
+              </li>
+              <li>
+                If a trash bag receives zero taps in a round, it becomes “busted” and remains visible in subsequent rounds.
+              </li>
+              <li>
+                Busted bags accumulate to simulate missed payments; too many busted bags eventually lead to game over.
+              </li>
+              <li>
+                If all active trash bags are successfully tapped (or partially tapped), the game vibrantly signals the start of the next round.
+              </li>
+              <li>
+                The overall goal is to maintain consistent “payment” activity to prevent financial penalties and avoid game over.
+              </li>
+            </ul>
+          </div>
           <button
             onClick={handleStart}
-            className="px-4 py-2 bg-green-500 text-white rounded"
+            className="px-4 py-2 bg-purple-800 text-white rounded"
           >
             Start Game
           </button>
         </div>
       ) : gameOver ? (
         <div className="text-center">
-          <h1 className="text-4xl font-bold mb-4 text-red-600">Game Over</h1>
+          <h1 className="text-4xl font-bold mb-4 text-purple-800">Game Over</h1>
           <p className="mb-2">Total Busted Bags: {totalBusted}</p>
           <p className="mb-4">Missed Payments: {missedPayments}</p>
           <button
@@ -201,9 +235,7 @@ const GameBoard: React.FC = () => {
             <p className="text-lg font-semibold">Round: {round}</p>
             <p className="text-lg font-semibold">Time Left: {timeLeft} sec</p>
             <p className="text-lg font-semibold">Busted Bags: {totalBusted}</p>
-            <p className="text-lg font-semibold">
-              Missed Payments: {missedPayments}
-            </p>
+            <p className="text-lg font-semibold">Missed Payments: {missedPayments}</p>
           </div>
           {/* Canvas */}
           <div className="w-96 h-96 bg-white border border-gray-300 relative">
@@ -224,7 +256,7 @@ const GameBoard: React.FC = () => {
             {/* Vibrant overlay when the round ends */}
             {roundEnded && (
               <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-                <h2 className="text-4xl font-bold text-yellow-400 animate-pulse">
+                <h2 className="text-4xl font-bold text-purple-800 animate-pulse">
                   Starting Next Round!
                 </h2>
               </div>
